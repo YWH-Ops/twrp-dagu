@@ -1,0 +1,71 @@
+name: Build TWRP
+
+on:
+  workflow_dispatch:
+    inputs:
+      device_name:
+        description: 'Device name'
+        required: true
+        default: 'dagu'
+      build_target:
+        description: 'Build target'
+        required: true
+        default: 'recoveryimage'
+        type: choice
+        options:
+          - recoveryimage
+          - bootimage
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/twrp/android-build:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        run: |
+          echo "BUILD_TARGET=${{ github.event.inputs.build_target }}" >> $GITHUB_ENV
+          echo "DEVICE_NAME=${{ github.event.inputs.device_name }}" >> $GITHUB_ENV
+
+      - name: Download TWRP source
+        run: |
+          mkdir -p ~/twrp
+          cd ~/twrp
+          repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 --depth=1
+          repo sync -c --no-clone-bundle --no-tags -j$(nproc --all)
+
+      - name: Build TWRP
+        run: |
+          cd ~/twrp
+          source build/envsetup.sh
+          lunch twrp_${{ env.DEVICE_NAME }}-eng
+          mka ${{ env.BUILD_TARGET }}
+
+      - name: Upload recovery image
+        uses: actions/upload-artifact@v4
+        with:
+          name: twrp-${{ env.DEVICE_NAME }}
+          path: ~/twrp/out/target/product/${{ env.DEVICE_NAME }}/recovery.img
+
+      - name: Create Release
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ~/twrp/out/target/product/${{ env.DEVICE_NAME }}/recovery.img
+          name: TWRP for ${{ env.DEVICE_NAME }} - ${{ github.run_number }}
+          tag_name: v${{ github.run_number }}
+          body: |
+            TWRP Recovery for Xiaomi Pad 5 Pro 12.4 (${{ env.DEVICE_NAME }})
+            
+            Build Date: ${{ github.event.head_commit.timestamp }}
+            
+            ## Installation
+            ```
+            fastboot flash recovery recovery.img
+            fastboot reboot recovery
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
