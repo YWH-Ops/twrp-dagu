@@ -38,15 +38,32 @@ jobs:
           cd ~/twrp
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
-          repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 --depth=1 --groups=all,-notdefault,-device,-darwin,-x86,-mips
+          repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 --depth=1
           repo sync -c -j4 --force-sync --no-clone-bundle --no-tags
         timeout-minutes: 30
+
+      - name: Clone device tree
+        run: |
+          cd ~/twrp
+          mkdir -p device/xiaomi
+          git clone --depth=1 https://github.com/b15185591889/twrp-dagu.git device/xiaomi/dagu || \
+          git clone --depth=1 https://github.com/YWH-Ops/twrp-dagu.git device/xiaomi/dagu || \
+          echo "Using local device tree"
+
+      - name: Copy local device tree
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/device/xiaomi/dagu" ]; then
+            mkdir -p ~/twrp/device/xiaomi
+            cp -r $GITHUB_WORKSPACE/device/xiaomi/dagu ~/twrp/device/xiaomi/
+            echo "Local device tree copied"
+          fi
+          ls -la ~/twrp/device/xiaomi/dagu/ || echo "No device tree found"
 
       - name: Build TWRP
         run: |
           cd ~/twrp
           source build/envsetup.sh
-          lunch twrp_dagu-eng
+          lunch twrp_dagu-eng || (echo "Trying twrp_dagu-userdebug"; lunch twrp_dagu-userdebug)
           mka recoveryimage -j4
         timeout-minutes: 60
 
