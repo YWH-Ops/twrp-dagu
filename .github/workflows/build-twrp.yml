@@ -9,6 +9,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          path: twrp-device
 
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -45,23 +47,30 @@ jobs:
       - name: Setup device tree
         run: |
           cd ~/twrp
-          # 清理可能存在的旧设备树
-          rm -rf device/xiaomi/dagu
           mkdir -p device/xiaomi
           
-          # 优先使用本地设备树
-          if [ -d "$GITHUB_WORKSPACE/device/xiaomi/dagu" ]; then
-            echo "Using local device tree"
-            cp -r $GITHUB_WORKSPACE/device/xiaomi/dagu device/xiaomi/
+          # 检查本地设备树
+          echo "Checking local device tree..."
+          ls -la $GITHUB_WORKSPACE/twrp-device/ || echo "No twrp-device directory"
+          
+          # 如果本地有设备树，复制它
+          if [ -d "$GITHUB_WORKSPACE/twrp-device/device/xiaomi/dagu" ]; then
+            echo "Copying local device tree"
+            cp -r $GITHUB_WORKSPACE/twrp-device/device/xiaomi/dagu device/xiaomi/
+          elif [ -f "$GITHUB_WORKSPACE/twrp-device/BoardConfig.mk" ]; then
+            echo "Copying device files from root"
+            mkdir -p device/xiaomi/dagu
+            cp -r $GITHUB_WORKSPACE/twrp-device/* device/xiaomi/dagu/
           else
-            echo "Cloning device tree from GitHub"
+            echo "Cloning from remote"
             git clone --depth=1 https://github.com/b15185591889/twrp-dagu.git device/xiaomi/dagu || \
             git clone --depth=1 https://github.com/YWH-Ops/twrp-dagu.git device/xiaomi/dagu
           fi
           
-          # 验证设备树
-          echo "Device tree contents:"
-          ls -la device/xiaomi/dagu/
+          # 验证
+          echo "Device tree location:"
+          find ~/twrp -name "twrp_dagu.mk" 2>/dev/null || echo "twrp_dagu.mk not found"
+          ls -la device/xiaomi/dagu/ || echo "dagu directory not found"
 
       - name: Build TWRP
         run: |
