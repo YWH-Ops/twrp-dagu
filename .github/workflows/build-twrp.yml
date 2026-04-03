@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,16 +18,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git-core gnupg flex bison gperf build-essential zip curl \
-            zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
-            x11proto-core-dev libx11-dev lib32z-dev libgl1-mesa-dev libxml2-utils \
-            xsltproc unzip python3 python3-pip bc
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends \
+            git gnupg flex bison gperf build-essential zip curl \
+            zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 \
+            libncurses-dev libx11-dev libxml2-utils xsltproc unzip \
+            python3 python3-pip bc || true
 
       - name: Setup repo
         run: |
           mkdir -p ~/.bin
-          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
+          curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
           chmod a+rx ~/.bin/repo
           echo "$HOME/.bin" >> $GITHUB_PATH
 
@@ -35,35 +36,42 @@ jobs:
         run: |
           mkdir -p ~/twrp
           cd ~/twrp
-          git config --global user.email "you@example.com"
-          git config --global user.name "Your Name"
-          repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 --depth=1
-          repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 --depth=1 --groups=all,-notdefault,-device,-darwin,-x86,-mips
+          repo sync -c -j4 --force-sync --no-clone-bundle --no-tags
+        timeout-minutes: 30
 
-      - name: Copy device tree
-        run: |
-          cp -r $GITHUB_WORKSPACE/device ~/twrp/ || echo "No device tree in repo"
-
-      - name: Build
+      - name: Build TWRP
         run: |
           cd ~/twrp
           source build/envsetup.sh
           lunch twrp_dagu-eng
-          mka recoveryimage -j$(nproc --all)
+          mka recoveryimage -j4
+        timeout-minutes: 60
 
-      - name: Upload
+      - name: Upload recovery
         uses: actions/upload-artifact@v4
         with:
-          name: recovery
+          name: twrp-recovery
           path: ~/twrp/out/target/product/dagu/recovery.img
 
-      - name: Release
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         if: success()
         with:
           files: ~/twrp/out/target/product/dagu/recovery.img
-          name: TWRP-${{ github.run_number }}
+          name: TWRP-dagu-${{ github.run_number }}
           tag_name: v${{ github.run_number }}
-          body: TWRP for Xiaomi Pad 5 Pro 12.4
+          body: |
+            TWRP Recovery for Xiaomi Pad 5 Pro 12.4 (dagu)
+            
+            Build Date: ${{ github.event.head_commit.timestamp }}
+            
+            ## Installation
+            ```bash
+            fastboot flash recovery recovery.img
+            fastboot reboot recovery
+            ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
