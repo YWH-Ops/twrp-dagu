@@ -42,28 +42,32 @@ jobs:
           repo sync -c -j4 --force-sync --no-clone-bundle --no-tags
         timeout-minutes: 30
 
-      - name: Clone device tree
+      - name: Setup device tree
         run: |
           cd ~/twrp
+          # 清理可能存在的旧设备树
+          rm -rf device/xiaomi/dagu
           mkdir -p device/xiaomi
-          git clone --depth=1 https://github.com/b15185591889/twrp-dagu.git device/xiaomi/dagu || \
-          git clone --depth=1 https://github.com/YWH-Ops/twrp-dagu.git device/xiaomi/dagu || \
-          echo "Using local device tree"
-
-      - name: Copy local device tree
-        run: |
+          
+          # 优先使用本地设备树
           if [ -d "$GITHUB_WORKSPACE/device/xiaomi/dagu" ]; then
-            mkdir -p ~/twrp/device/xiaomi
-            cp -r $GITHUB_WORKSPACE/device/xiaomi/dagu ~/twrp/device/xiaomi/
-            echo "Local device tree copied"
+            echo "Using local device tree"
+            cp -r $GITHUB_WORKSPACE/device/xiaomi/dagu device/xiaomi/
+          else
+            echo "Cloning device tree from GitHub"
+            git clone --depth=1 https://github.com/b15185591889/twrp-dagu.git device/xiaomi/dagu || \
+            git clone --depth=1 https://github.com/YWH-Ops/twrp-dagu.git device/xiaomi/dagu
           fi
-          ls -la ~/twrp/device/xiaomi/dagu/ || echo "No device tree found"
+          
+          # 验证设备树
+          echo "Device tree contents:"
+          ls -la device/xiaomi/dagu/
 
       - name: Build TWRP
         run: |
           cd ~/twrp
           source build/envsetup.sh
-          lunch twrp_dagu-eng || (echo "Trying twrp_dagu-userdebug"; lunch twrp_dagu-userdebug)
+          lunch twrp_dagu-eng
           mka recoveryimage -j4
         timeout-minutes: 60
 
