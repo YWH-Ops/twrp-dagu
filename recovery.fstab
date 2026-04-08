@@ -1,0 +1,21 @@
+# Android fstab file for Xiaomi Pad 5 Pro 12.4 (dagu)
+# This device is dynamic-partition + A/B and boots recovery from boot/vendor_boot.
+
+/dev/block/bootdevice/by-name/system              /system         ext4    ro,barrier=1,discard                         wait,slotselect,avb
+/dev/block/bootdevice/by-name/vendor              /vendor         ext4    ro,barrier=1,discard                         wait,slotselect,avb
+/dev/block/bootdevice/by-name/product             /product        ext4    ro,barrier=1,discard                         wait,slotselect,avb
+/dev/block/bootdevice/by-name/system_ext          /system_ext     ext4    ro,barrier=1,discard                         wait,slotselect,avb
+/dev/block/bootdevice/by-name/odm                 /odm            ext4    ro,barrier=1,discard                         wait,slotselect,avb
+
+/dev/block/bootdevice/by-name/boot                /boot           emmc    defaults                                     slotselect
+/dev/block/bootdevice/by-name/vendor_boot         /vendor_boot    emmc    defaults                                     slotselect
+/dev/block/bootdevice/by-name/dtbo                /dtbo           emmc    defaults                                     slotselect
+/dev/block/bootdevice/by-name/vbmeta              /vbmeta         emmc    defaults                                     slotselect
+/dev/block/bootdevice/by-name/misc                /misc           emmc    defaults                                     defaults
+/dev/block/bootdevice/by-name/super               /super          emmc    ro                                           defaults
+
+/dev/block/bootdevice/by-name/userdata            /data           f2fs    noatime,nosuid,nodev,discard,fsync_mode=nobarrier wait,check,formattable,quota,latemount,fileencryption=ice
+/dev/block/bootdevice/by-name/metadata            /metadata       ext4    noatime,nosuid,nodev,discard                 wait,check,formattable
+/dev/block/bootdevice/by-name/persist             /persist        ext4    nosuid,nodev,barrier=1                       wait,check
+
+/devices/platform/soc/a600000.ssusb/a600000.dwc3/xhci-hcd.0.auto/usb*  auto  auto  defaults  voldmanaged=usb:auto
