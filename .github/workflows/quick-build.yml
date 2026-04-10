@@ -173,7 +173,7 @@ EOF
 int main() {
     printf("TWRP Build Test - Success!\n");
     printf("Device: dagu\n");
-    printf("Test Time: %s\n", __TIME__);
+    printf("Test completed successfully\n");
     return 0;
 }
 EOF
