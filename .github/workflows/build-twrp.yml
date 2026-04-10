@@ -1,0 +1,147 @@
+name: Build TWRP for Xiaomi Pad 5 Pro 12.4 (dagu)
+
+on:
+  workflow_dispatch:
+    inputs:
+      device_codename:
+        description: 'Device Codename'
+        required: true
+        default: 'dagu'
+      build_target:
+        description: 'Build Target'
+        required: true
+        default: 'bootimage'
+        type: choice
+        options:
+          - bootimage
+          - recoveryimage
+
+env:
+  DEVICE_CODENAME: ${{ github.event.inputs.device_codename }}
+  BUILD_TARGET: ${{ github.event.inputs.build_target }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/twrp-builder/android-build:latest
+      options: --user root
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
+    - name: Setup Environment
+      run: |
+        echo "Setting up build environment..."
+        apt-get update && apt-get install -y \
+          git-core gnupg flex bison build-essential zip curl \
+          zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 \
+          libncurses5 lib32ncurses5-dev x11proto-core-dev \
+          libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils \
+          xsltproc unzip fontconfig
+        
+    - name: Setup Git
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git config --global color.ui auto
+
+    - name: Download TWRP Source
+      run: |
+        echo "Downloading TWRP source code..."
+        mkdir -p ~/twrp
+        cd ~/twrp
+        
+        # Initialize repo
+        repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 --depth=1
+        
+        # Sync source (only essential components)
+        repo sync -c --force-sync --no-clone-bundle --no-tags -j$(nproc --all) \
+          build/make \
+          build/soong \
+          system/core \
+          hardware/interfaces \
+          bootable/recovery || true
+          
+    - name: Copy Device Tree
+      run: |
+        echo "Setting up device tree..."
+        mkdir -p ~/twrp/device/xiaomi
+        cp -r $GITHUB_WORKSPACE/device/xiaomi/dagu ~/twrp/device/xiaomi/
+        
+        # Verify device tree
+        ls -la ~/twrp/device/xiaomi/dagu/
+        
+    - name: Build TWRP
+      run: |
+        echo "Starting TWRP build..."
+        cd ~/twrp
+        
+        # Setup build environment
+        source build/envsetup.sh
+        
+        # Select device
+        lunch twrp_${{ env.DEVICE_CODENAME }}-eng
+        
+        # Start build
+        mka ${{ env.BUILD_TARGET }} -j$(nproc --all)
+        
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: twrp-${{ env.DEVICE_CODENAME }}-${{ github.run_number }}
+        path: |
+          ~/twrp/out/target/product/${{ env.DEVICE_CODENAME }}/*.img
+          ~/twrp/out/target/product/${{ env.DEVICE_CODENAME }}/*.zip
+        if-no-files-found: warn
+        
+    - name: Create Release
+      if: success()
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: twrp-${{ env.DEVICE_CODENAME }}-${{ github.run_number }}
+        name: TWRP for Xiaomi Pad 5 Pro 12.4 (${{ env.DEVICE_CODENAME }}) - Build ${{ github.run_number }}
+        body: |
+          ## TWRP Recovery for Xiaomi Pad 5 Pro 12.4 (dagu)
+          
+          ### Build Information
+          - **Device:** Xiaomi Pad 5 Pro 12.4 (dagu)
+          - **Build Date:** ${{ github.event.head_commit.timestamp }}
+          - **Build Number:** ${{ github.run_number }}
+          
+          ### Installation
+          1. Download the boot or recovery image
+          2. Boot to fastboot: `adb reboot bootloader`
+          3. Test boot first: `fastboot boot twrp-*.img`
+          4. If the build target was `bootimage`, flash boot: `fastboot flash boot twrp-*.img`
+          5. If the build target was `recoveryimage`, flash recovery: `fastboot flash recovery twrp-*.img`
+          
+          ### Notes
+          - This is an unofficial build
+          - Use at your own risk
+          - Make sure to backup your data before flashing
+          
+          ### Source Code
+          Device tree: https://github.com/${{ github.repository }}
+        files: |
+          ~/twrp/out/target/product/${{ env.DEVICE_CODENAME }}/*.img
+          ~/twrp/out/target/product/${{ env.DEVICE_CODENAME }}/*.zip
+        draft: true
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Build Log on Failure
+      if: failure()
+      run: |
+        echo "Build failed! Checking logs..."
+        if [ -f ~/twrp/out/build.log ]; then
+          tail -100 ~/twrp/out/build.log
+        fi
+        if [ -f ~/twrp/out/error.log ]; then
+          cat ~/twrp/out/error.log
+        fi
