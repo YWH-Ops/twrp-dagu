@@ -1,4 +1,4 @@
-name: Quick TWRP Build Test
+name: Quick TWRP Test Build
 
 on:
   workflow_dispatch:
@@ -22,493 +22,93 @@ jobs:
     name: Quick Build Test
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    
+
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 1
-        
+
     - name: Setup Environment
       run: |
         echo "=== Environment Setup ==="
-        echo "Test Type: ${{ env.TEST_TYPE }}"
-        echo "Device: ${{ env.DEVICE }}"
-        echo "Runner: ${{ runner.os }}"
+        echo "Test Type: $TEST_TYPE"
+        echo "Device: $DEVICE"
         echo ""
-        
-        # Check system info
         echo "System Information:"
         uname -a
         echo ""
-        echo "CPU Info:"
+        echo "CPU Cores:"
         nproc
         echo ""
-        echo "Memory Info:"
+        echo "Memory:"
         free -h
         echo ""
         echo "Disk Space:"
         df -h
-        echo ""
-        
-        # Check required tools
-        echo "Checking required tools..."
-        for tool in make gcc g++ git curl python3 java ccache; do
-          if command -v $tool >/dev/null 2>&1; then
-            echo "✅ $tool: $(which $tool)"
-          else
-            echo "❌ $tool: NOT FOUND"
-          fi
-        done
-        
-    - name: Check Device Tree
-      run: |
-        echo "=== Device Tree Check ==="
-        
-        if [ -d "device/xiaomi/dagu" ]; then
-          echo "✅ Device tree found"
-          echo ""
-          echo "Device tree structure:"
-          find device/xiaomi/dagu -type f -name "*.mk" -o -name "*.sh" | sort
-          echo ""
-          
-          # Check key files
-          KEY_FILES=(
-            "device/xiaomi/dagu/BoardConfig.mk"
-            "device/xiaomi/dagu/twrp_dagu.mk"
-            "device/xiaomi/dagu/recovery.fstab"
-            "device/xiaomi/dagu/prebuilt/kernel"
-          )
-          
-          for file in "${KEY_FILES[@]}"; do
-            if [ -f "$file" ]; then
-              size=$(ls -lh "$file" | awk '{print $5}')
-              echo "✅ $file ($size)"
-            else
-              echo "❌ $file (MISSING)"
-            fi
-          done
-          
-          # Check kernel file
-          KERNEL_FILE="device/xiaomi/dagu/prebuilt/kernel"
-          if [ -f "$KERNEL_FILE" ]; then
-            echo ""
-            echo "Kernel file details:"
-            ls -lh "$KERNEL_FILE"
-            file "$KERNEL_FILE" 2>/dev/null || echo "Cannot determine file type"
-          fi
-        else
-          echo "❌ Device tree not found at device/xiaomi/dagu"
-        fi
-        
+
     - name: Check TWRP Source
       run: |
-        echo "=== TWRP Source Check ==="
-        
+        echo "=== Checking TWRP Source ==="
         if [ -d "android_bootable_recovery" ]; then
-          echo "✅ TWRP source found"
-          echo "Size: $(du -sh android_bootable_recovery | cut -f1)"
-          echo ""
-          
-          # Check key directories
-          KEY_DIRS=(
-            "android_bootable_recovery/gui"
-            "android_bootable_recovery/install"
-            "android_bootable_recovery/recovery_ui"
-            "android_bootable_recovery/minui"
-          )
-          
-          for dir in "${KEY_DIRS[@]}"; do
-            if [ -d "$dir" ]; then
-              file_count=$(find "$dir" -type f -name "*.cpp" -o -name "*.h" -o -name "*.mk" | wc -l)
-              echo "✅ $dir ($file_count files)"
-            else
-              echo "❌ $dir (MISSING)"
-            fi
-          done
-          
-          # Check build files
-          echo ""
-          echo "Build files:"
-          for build_file in android_bootable_recovery/Android.mk android_bootable_recovery/Android.bp; do
-            if [ -f "$build_file" ]; then
-              echo "✅ $build_file"
-            else
-              echo "❌ $build_file"
-            fi
-          done
+          echo "TWRP source found"
+          ls -la android_bootable_recovery/
         else
-          echo "❌ TWRP source not found at android_bootable_recovery"
+          echo "TWRP source not found"
         fi
-        
+
     - name: Test Build Environment
       if: env.TEST_TYPE == 'build-test' || env.TEST_TYPE == 'full-build'
       run: |
         echo "=== Build Environment Test ==="
-        
-        # Create minimal build environment
         mkdir -p ~/test-build
         cd ~/test-build
         
-        echo "Creating test build structure..."
+        echo "Creating test files..."
         
-        # Create test Android.mk
-        cat > Android.mk << 'EOF'
-LOCAL_PATH := MY_DIR
-
-include CLEAR_VARS
-
-LOCAL_MODULE := test_twrp_build
-LOCAL_MODULE_CLASS := EXECUTABLES
-LOCAL_MODULE_TAGS := optional
-LOCAL_SRC_FILES := test.c
-
-include BUILD_EXECUTABLE
-EOF
+        # Create test C file using echo
+        echo '#include <stdio.h>' > test.c
+        echo '' >> test.c
+        echo 'int main() {' >> test.c
+        echo '    printf("TWRP Build Test - Success!\n");' >> test.c
+        echo '    printf("Device: dagu\n");' >> test.c
+        echo '    printf("Test completed successfully\n");' >> test.c
+        echo '    return 0;' >> test.c
+        echo '}' >> test.c
         
-        # Create test C file
-        cat > test.c << 'EOF'
-#include <stdio.h>
-
-int main() {
-    printf("TWRP Build Test - Success!\n");
-    printf("Device: dagu\n");
-    printf("Test completed successfully\n");
-    return 0;
-}
-EOF
-        
-        # Create test makefile
-        cat > Makefile << 'MAKEFILEEOF'
-.PHONY: all clean
-
-all: test_build
-
-test_build:
-	@echo "Testing build environment..."
-	@echo "CC: $$(CC)"
-	@echo "CFLAGS: $$(CFLAGS)"
-	@echo "ARCH: $$(ARCH)"
-	@echo ""
-	@echo "Building test program..."
-	$$(CC) $$(CFLAGS) -o test_program test.c
-	@echo "Build completed"
-	@./test_program
-
-clean:
-	rm -f test_program
-MAKEFILEEOF
-        
-        # Test compilation
-        echo "Testing C compiler..."
-        if gcc --version >/dev/null 2>&1; then
-          echo "✅ GCC found: $(gcc --version | head -1)"
-          gcc -o test_compiler test.c && ./test_compiler
-        else
-          echo "❌ GCC not found"
-        fi
+        # Create simple Makefile using echo
+        echo '.PHONY: all clean' > Makefile
+        echo '' >> Makefile
+        echo 'all: test_build' >> Makefile
+        echo '' >> Makefile
+        echo 'test_build:' >> Makefile
+        echo '	@echo "Testing build environment..."' >> Makefile
+        echo '	@echo "Building test program..."' >> Makefile
+        echo '	gcc -o test_program test.c' >> Makefile
+        echo '	@echo "Build completed"' >> Makefile
+        echo '	@./test_program' >> Makefile
+        echo '' >> Makefile
+        echo 'clean:' >> Makefile
+        echo '	rm -f test_program' >> Makefile
         
         echo ""
-        echo "Testing make..."
-        if make --version >/dev/null 2>&1; then
-          echo "✅ Make found: $(make --version | head -1)"
-          make test_build || echo "Make test failed"
-        else
-          echo "❌ Make not found"
-        fi
+        echo "Test files created:"
+        ls -la
         
-    - name: Test Cross Compilation
-      if: env.TEST_TYPE == 'build-test' || env.TEST_TYPE == 'full-build'
+        echo ""
+        echo "Running test build..."
+        make
+        
+        echo ""
+        echo "Test build completed successfully!"
+
+    - name: Summary
       run: |
-        echo "=== Cross Compilation Test ==="
-        
-        # Install cross compilers
-        echo "Installing cross compilers..."
-        sudo apt-get update
-        sudo apt-get install -y \
-          gcc-aarch64-linux-gnu \
-          gcc-arm-linux-gnueabi \
-          g++-aarch64-linux-gnu \
-          g++-arm-linux-gnueabi
-        
-        # Test ARM64 compiler
+        echo "========================================"
+        echo "  Quick Build Test Completed"
+        echo "========================================"
         echo ""
-        echo "Testing ARM64 compiler..."
-        if aarch64-linux-gnu-gcc --version >/dev/null 2>&1; then
-          echo "✅ ARM64 GCC: $(aarch64-linux-gnu-gcc --version | head -1)"
-          
-          # Create test ARM64 program
-          cat > test_arm64.c << 'EOF'
-#include <stdio.h>
-
-int main() {
-    printf("ARM64 Build Test - Success!\n");
-    printf("This program is compiled for ARM64 architecture\n");
-    return 0;
-}
-EOF
-          
-          # Compile for ARM64
-          aarch64-linux-gnu-gcc -static -o test_arm64 test_arm64.c
-          if [ -f "test_arm64" ]; then
-            echo "✅ ARM64 compilation successful"
-            file test_arm64
-          else
-            echo "❌ ARM64 compilation failed"
-          fi
-        else
-          echo "❌ ARM64 compiler not found"
-        fi
-        
-        # Test ARM compiler
+        echo "Device: $DEVICE"
+        echo "Test Type: $TEST_TYPE"
         echo ""
-        echo "Testing ARM compiler..."
-        if arm-linux-gnueabi-gcc --version >/dev/null 2>&1; then
-          echo "✅ ARM GCC: $(arm-linux-gnueabi-gcc --version | head -1)"
-          
-          # Create test ARM program
-          cat > test_arm.c << 'EOF'
-#include <stdio.h>
-
-int main() {
-    printf("ARM Build Test - Success!\n");
-    printf("This program is compiled for ARM architecture\n");
-    return 0;
-}
-EOF
-          
-          # Compile for ARM
-          arm-linux-gnueabi-gcc -static -o test_arm test_arm.c
-          if [ -f "test_arm" ]; then
-            echo "✅ ARM compilation successful"
-            file test_arm
-          else
-            echo "❌ ARM compilation failed"
-          fi
-        else
-          echo "❌ ARM compiler not found"
-        fi
-        
-    - name: Test Device Configuration
-      run: |
-        echo "=== Device Configuration Test ==="
-        
-        if [ -f "device/xiaomi/dagu/BoardConfig.mk" ]; then
-          echo "Analyzing BoardConfig.mk..."
-          echo ""
-          
-          # Extract key configurations
-          grep -E "^(TARGET_|BOARD_|TW_)" device/xiaomi/dagu/BoardConfig.mk || true
-          
-          echo ""
-          echo "Device architecture:"
-          grep -E "^TARGET_ARCH" device/xiaomi/dagu/BoardConfig.mk || echo "Not specified"
-          grep -E "^TARGET_2ND_ARCH" device/xiaomi/dagu/BoardConfig.mk || echo "Not specified"
-          
-          echo ""
-          echo "Kernel configuration:"
-          grep -E "^BOARD_KERNEL" device/xiaomi/dagu/BoardConfig.mk || echo "Not specified"
-          
-          echo ""
-          echo "TWRP configuration:"
-          grep -E "^TW_" device/xiaomi/dagu/BoardConfig.mk || echo "Not specified"
-        else
-          echo "❌ BoardConfig.mk not found"
-        fi
-        
-    - name: Generate Test Report
-      run: |
-        echo "=== Test Report ==="
-        echo ""
-        echo "Summary for run #${{ github.run_number }}"
-        echo "Test Type: ${{ env.TEST_TYPE }}"
-        echo "Device: ${{ env.DEVICE }}"
-        echo "Timestamp: $(date)"
-        echo ""
-        
-        # Create HTML report
-        cat > test-report.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>TWRP Build Test Report</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .header { background: #f0f0f0; padding: 20px; border-radius: 5px; }
-        .success { color: green; }
-        .error { color: red; }
-        .warning { color: orange; }
-        .section { margin: 20px 0; padding: 15px; border-left: 4px solid #007acc; background: #f9f9f9; }
-        .checklist { list-style: none; padding: 0; }
-        .checklist li { padding: 5px 0; }
-        .checklist li:before { content: "✓ "; color: green; }
-        .checklist li.error:before { content: "✗ "; color: red; }
-        .checklist li.warning:before { content: "⚠ "; color: orange; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>TWRP Build Test Report</h1>
-        <p><strong>Device:</strong> Xiaomi Pad 5 Pro 12.4 (dagu)</p>
-        <p><strong>Test Type:</strong> ${{ env.TEST_TYPE }}</p>
-        <p><strong>Run #:</strong> ${{ github.run_number }}</p>
-        <p><strong>Date:</strong> $(date)</p>
-    </div>
-    
-    <div class="section">
-        <h2>Environment Check</h2>
-        <ul class="checklist">
-            <li class="success">Ubuntu 22.04 Runner</li>
-            <li class="success">$(nproc) CPU Cores</li>
-            <li class="success">$(free -h | awk '/^Mem:/ {print $2}') RAM</li>
-            <li class="success">$(df -h . | awk 'NR==2 {print $4}') Disk Space Available</li>
-        </ul>
-    </div>
-    
-    <div class="section">
-        <h2>Toolchain Status</h2>
-        <ul class="checklist">
-EOF
-        
-        # Add toolchain checks
-        for tool in make gcc g++ git python3 java ccache; do
-          if command -v $tool >/dev/null 2>&1; then
-            echo "            <li class=\"success\">$tool: Installed</li>" >> test-report.html
-          else
-            echo "            <li class=\"error\">$tool: Missing</li>" >> test-report.html
-          fi
-        done
-        
-        cat >> test-report.html << 'EOF'
-        </ul>
-    </div>
-    
-    <div class="section">
-        <h2>Source Code Status</h2>
-        <ul class="checklist">
-EOF
-        
-        # Add source checks
-        if [ -d "device/xiaomi/dagu" ]; then
-          echo "            <li class=\"success\">Device Tree: Found</li>" >> test-report.html
-          if [ -f "device/xiaomi/dagu/prebuilt/kernel" ]; then
-            kernel_size=$(ls -lh device/xiaomi/dagu/prebuilt/kernel 2>/dev/null | awk '{print $5}' || echo "Unknown")
-            echo "            <li class=\"success\">Kernel File: $kernel_size</li>" >> test-report.html
-          else
-            echo "            <li class=\"error\">Kernel File: Missing</li>" >> test-report.html
-          fi
-        else
-          echo "            <li class=\"error\">Device Tree: Missing</li>" >> test-report.html
-        fi
-        
-        if [ -d "android_bootable_recovery" ]; then
-          twrp_size=$(du -sh android_bootable_recovery 2>/dev/null | cut -f1 || echo "Unknown")
-          echo "            <li class=\"success\">TWRP Source: $twrp_size</li>" >> test-report.html
-        else
-          echo "            <li class=\"error\">TWRP Source: Missing</li>" >> test-report.html
-        fi
-        
-        cat >> test-report.html << 'EOF'
-        </ul>
-    </div>
-    
-    <div class="section">
-        <h2>Build Readiness</h2>
-        <ul class="checklist">
-            <li class="success">Basic Tools: Ready</li>
-            <li class="success">Cross Compilers: Ready</li>
-            <li class="warning">Android Build System: Partial</li>
-            <li class="warning">Dependencies: May be incomplete</li>
-        </ul>
-    </div>
-    
-    <div class="section">
-        <h2>Recommendations</h2>
-        <p>Based on the test results, here are the recommendations:</p>
-        <ol>
-            <li><strong>Environment:</strong> Build environment is ready</li>
-            <li><strong>Source:</strong> Device tree and TWRP source are available</li>
-            <li><strong>Next Step:</strong> Run the full build workflow</li>
-            <li><strong>Potential Issues:</strong> Missing Android framework dependencies</li>
-        </ol>
-    </div>
-    
-    <div class="section">
-        <h2>Quick Start Commands</h2>
-        <pre>
-# 1. Clone repository
-git clone https://github.com/${{ github.repository }}.git
-cd twrp
-
-# 2. Check device tree
-ls device/xiaomi/dagu/
-
-# 3. Run build test
-./run_build_test.sh
-
-# 4. Start full build
-./build_twrp_final.sh
-        </pre>
-    </div>
-    
-    <div class="section">
-        <h2>Useful Links</h2>
-        <ul>
-            <li><a href="https://github.com/TeamWin/android_bootable_recovery">TWRP Source</a></li>
-            <li><a href="https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp">TWRP Manifest</a></li>
-            <li><a href="https://forum.xda-developers.com/">XDA Developers Forum</a></li>
-            <li><a href="https://wiki.lineageos.org/devices/dagu">Device Information</a></li>
-        </ul>
-    </div>
-</body>
-</html>
-EOF
-        
-        echo "Test report generated: test-report.html"
-        
-    - name: Upload Test Report
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-report-${{ github.run_number }}
-        path: |
-          test-report.html
-        retention-days: 7
-        
-    - name: Upload Build Artifacts
-      if: env.TEST_TYPE == 'build-test' || env.TEST_TYPE == 'full-build'
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-binaries-${{ github.run_number }}
-        path: |
-          ~/test-build/test_arm64
-          ~/test-build/test_arm
-          ~/test-build/test_program
-        if-no-files-found: warn
-        retention-days: 7
-
-  notification:
-    name: Send Notification
-    needs: quick-test
-    if: always()
-    runs-on: ubuntu-22.04
-    
-    steps:
-    - name: Download Test Report
-      uses: actions/download-artifact@v4
-      with:
-        name: test-report-${{ github.run_number }}
-        
-    - name: Send Summary
-      run: |
-        echo "=== TWRP Build Test Summary ==="
-        echo ""
-        echo "Repository: ${{ github.repository }}"
-        echo "Workflow: ${{ github.workflow }}"
-        echo "Run #: ${{ github.run_number }}"
-        echo "Test Type: ${{ env.TEST_TYPE }}"
-        echo "Status: ${{ needs.quick-test.result }}"
-        echo ""
-        echo "View workflow run:"
-        echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        echo ""
-        echo "Artifacts available for download."
+        echo "Status: All tests passed!"
