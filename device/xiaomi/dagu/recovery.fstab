@@ -1,0 +1,80 @@
+# Android fstab file for Xiaomi Pad 5 Pro 12.4 (dagu)
+# <src>                                          <mnt_point>         <type>    <mnt_flags and options>                     <fs_mgr_flags>
+# The filesystem that contains the filesystem checker binary (typically /system) cannot
+# specify MF_CHECK, and must come before any filesystems that do specify MF_CHECK
+
+# System partitions
+/dev/block/platform/soc/1d84000.ufshc/by-name/system                 /system             ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+/dev/block/platform/soc/1d84000.ufshc/by-name/system_a               /system             ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+/dev/block/platform/soc/1d84000.ufshc/by-name/system_b               /system             ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+
+# Vendor
+/dev/block/platform/soc/1d84000.ufshc/by-name/vendor                 /vendor             ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+/dev/block/platform/soc/1d84000.ufshc/by-name/vendor_a               /vendor             ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+/dev/block/platform/soc/1d84000.ufshc/by-name/vendor_b               /vendor             ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+
+# Product
+/dev/block/platform/soc/1d84000.ufshc/by-name/product                /product            ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+/dev/block/platform/soc/1d84000.ufshc/by-name/product_a              /product            ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+/dev/block/platform/soc/1d84000.ufshc/by-name/product_b              /product            ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+
+# SystemExt
+/dev/block/platform/soc/1d84000.ufshc/by-name/system_ext             /system_ext         ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+/dev/block/platform/soc/1d84000.ufshc/by-name/system_ext_a           /system_ext         ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+/dev/block/platform/soc/1d84000.ufshc/by-name/system_ext_b           /system_ext         ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+
+# ODM
+/dev/block/platform/soc/1d84000.ufshc/by-name/odm                    /odm                ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+/dev/block/platform/soc/1d84000.ufshc/by-name/odm_a                  /odm                ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+/dev/block/platform/soc/1d84000.ufshc/by-name/odm_b                  /odm                ext4    ro,barrier=1,discard                                 wait,slotselect,avb
+
+# Boot and Recovery
+/dev/block/platform/soc/1d84000.ufshc/by-name/boot                   /boot               emmc    defaults                                            defaults
+/dev/block/platform/soc/1d84000.ufshc/by-name/boot_a                 /boot               emmc    defaults                                            defaults
+/dev/block/platform/soc/1d84000.ufshc/by-name/boot_b                 /boot               emmc    defaults                                            defaults
+
+/dev/block/platform/soc/1d84000.ufshc/by-name/recovery               /recovery           emmc    defaults                                            defaults
+
+# Data and Metadata
+/dev/block/platform/soc/1d84000.ufshc/by-name/userdata               /data               f2fs    noatime,nosuid,nodev,noauto_da_alloc,discard,resize  wait,check,formattable,quota,resize,fileencryption
+/dev/block/platform/soc/1d84000.ufshc/by-name/metadata               /metadata           ext4    noatime,nosuid,nodev,discard                         wait,check,formattable
+/dev/block/platform/soc/1d84000.ufshc/by-name/persist                /persist            ext4    nosuid,nodev,barrier=1,noauto_da_alloc              wait,check
+
+# Cache
+/dev/block/platform/soc/1d84000.ufshc/by-name/cache                  /cache              ext4    noatime,nosuid,nodev,noauto_da_alloc,barrier=1         wait,check
+
+# Firmware partitions
+/dev/block/platform/soc/1d84000.ufshc/by-name/modem                  /firmware           vfat    ro,shortname=lower,uid=0,gid=1000,dmask=227,fmask=337,context=u:object_r:firmware_file:s0        wait
+/dev/block/platform/soc/1d84000.ufshc/by-name/bluetooth              /bt_firmware        vfat    ro,shortname=lower,uid=1002,gid=3002,dmask=227,fmask=337,context=u:object_r:bt_firmware_file:s0    wait
+/dev/block/platform/soc/1d84000.ufshc/by-name/dsp                    /dsp                ext4    ro,nosuid,nodev,barrier=1,noauto_da_alloc              wait,check
+/dev/block/platform/soc/1d84000.ufshc/by-name/modemmisc              /misc               emmc    defaults                                            defaults
+
+# Misc partitions
+/dev/block/platform/soc/1d84000.ufshc/by-name/misc                   /misc               emmc    defaults                                            defaults
+/dev/block/platform/soc/1d84000.ufshc/by-name/keystore               /keystore           emmc    defaults                                            defaults
+/dev/block/platform/soc/1d84000.ufshc/by-name/fsg                    /fsg                emmc    ro,nosuid,nodev                                     wait,check
+/dev/block/platform/soc/1d84000.ufshc/by-name/fsc                    /fsc                emmc    ro,nosuid,nodev                                     wait,check
+/dev/block/platform/soc/1d84000.ufshc/by-name/ssd                    /ssd                emmc    nosuid,nodev,noexec                                 wait,check
+/dev/block/platform/soc/1d84000.ufshc/by-name/ddr                    /ddr                emmc    ro,nosuid,nodev                                     wait,check
+
+# Super partition
+/dev/block/platform/soc/1d84000.ufshc/by-name/super                  /super              emmc    ro                                                  wait,slotselect
+
+# USB OTG (if supported)
+/devices/platform/soc/a600000.ssusb/a600000.dwc3/xhci-hcd.0.auto/usb* auto                auto    defaults                                            voldmanaged=usb:auto
+
+# External SD Card
+/devices/platform/soc/1d84000.ufshc/mmc_host* auto                   auto                defaults                                            voldmanaged=sdcard1:auto,encryptable=userdata
+
+# TWRP specific flags
+/dev/block/bootdevice/by-name/userdata                               /data               f2fs    rw,discard,fsflags=0x00000400,wait,check,formattable,quota,resize,fileencryption,latemount
+/dev/block/bootdevice/by-name/metadata                               /metadata           ext4    noatime,nosuid,nodev,discard,wait,check,formattable
+/dev/block/bootdevice/by-name/persist                                /persist            ext4    nosuid,nodev,barrier=1,noauto_da_alloc,wait,check
+
+# For A/B devices
+/dev/block/platform/soc/1d84000.ufshc/by-name/boot_a                 /boot_a             emmc    defaults                                            defaults
+/dev/block/platform/soc/1d84000.ufshc/by-name/boot_b                 /boot_b             emmc    defaults                                            defaults
+
+# Note: The actual block device paths may vary. These are common paths for Qualcomm SM8150 devices.
+# You may need to adjust these based on the actual device partition layout.
+# To verify, check: ls -la /dev/block/platform/soc/by-name/ on the device.
