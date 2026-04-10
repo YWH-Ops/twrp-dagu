@@ -173,7 +173,6 @@ jobs:
         
         # Create minimal manifest
         cat > .repo/local_manifest.xml << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
 <manifest>
   <remote name="aosp"
           fetch="${{ env.USE_CHINA_MIRROR == 'true' && env.TUNA_AOSP_MIRROR || 'https://android.googlesource.com' }}" />
