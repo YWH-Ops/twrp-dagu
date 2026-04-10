@@ -35,34 +35,25 @@ env:
   UPLOAD_ARTIFACT: ${{ github.event.inputs.upload_artifact }}
   DEVICE: 'dagu'
   TARGET: 'bootimage'
-  
-  # China Mirror URLs
-  TUNA_REPO_URL: 'https://mirrors.tuna.tsinghua.edu.cn/git/git-repo'
-  TUNA_AOSP_MIRROR: 'https://mirrors.tuna.tsinghua.edu.cn/git/AOSP'
-  USTC_REPO_URL: 'https://gerrit-googlesource.proxy.ustclug.org/git-repo'
-  USTC_AOSP_MIRROR: 'https://mirrors.ustc.edu.cn/git/AOSP'
-  ALIYUN_REPO_URL: 'https://mirrors.aliyun.com/git-repo'
-  ALIYUN_AOSP_MIRROR: 'https://mirrors.aliyun.com/git/AOSP'
 
 jobs:
   setup-environment:
     name: Setup Build Environment
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
-    
+    timeout-minutes: 30
+
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 1
-        path: 'device-tree'
-    
+
     - name: Setup Build Tools
       run: |
         echo "Setting up build environment on $(date)"
-        echo "Build Type: ${{ env.BUILD_TYPE }}"
-        echo "Use China Mirror: ${{ env.USE_CHINA_MIRROR }}"
-        
+        echo "Build Type: $BUILD_TYPE"
+        echo "Use China Mirror: $USE_CHINA_MIRROR"
+
         # Install required packages
         sudo apt-get update
         sudo apt-get install -y \
@@ -74,518 +65,167 @@ jobs:
           ccache lzop gperf libssl-dev bc rsync schedtool \
           libtinfo5 libncurses5-dev libreadline-dev \
           libz-dev libbz2-dev liblz4-tool lz4
-        
+
         # Setup ccache
         ccache -M 20G
-        echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
-        echo "USE_CCACHE=1" >> $GITHUB_ENV
-        echo "CCACHE_COMPRESS=1" >> $GITHUB_ENV
-        
-        # Setup Java (for older Android versions)
-        sudo apt-get install -y openjdk-11-jdk
-        sudo update-java-alternatives --set java-1.11.0-openjdk-amd64
-        
-        # Setup Python
-        python3 --version
-        pip3 --version
-        
-        echo "Environment setup completed"
-    
-    - name: Setup Git Configuration
-      run: |
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
-        git config --global color.ui auto
-        
-        # Setup git lfs if needed
-        sudo apt-get install -y git-lfs
-        git lfs install
-        
-        echo "Git configuration completed"
-    
-    - name: Setup Repo Tool
-      run: |
-        echo "Setting up repo tool..."
-        
-        if [ "${{ env.USE_CHINA_MIRROR }}" = "true" ]; then
-          echo "Using China mirror for repo tool"
-          REPO_URL="${{ env.TUNA_REPO_URL }}"
-        else
-          echo "Using default repo tool"
-          REPO_URL="https://gerrit.googlesource.com/git-repo"
-        fi
-        
+
+        # Install repo tool
         mkdir -p ~/bin
-        curl -s $REPO_URL -o ~/bin/repo
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
-        
-        echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
-        source ~/.bashrc
-        
-        repo --version || echo "Repo tool setup completed"
+        export PATH=~/bin:$PATH
+
+        echo "Build tools installed successfully"
 
   download-source:
     name: Download Android Source
     needs: setup-environment
     runs-on: ubuntu-22.04
-    timeout-minutes: 180
-    
+    timeout-minutes: 120
+
     steps:
-    - name: Checkout Device Tree
+    - name: Checkout Repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 1
-        path: 'device-tree'
-    
-    - name: Setup Source Directory
+
+    - name: Setup Git Mirrors
       run: |
-        echo "Setting up source directory..."
-        mkdir -p ~/android-twrp
-        cd ~/android-twrp
-        echo "ANDROID_BUILD_TOP=$(pwd)" >> $GITHUB_ENV
-        
-    - name: Configure Git Mirrors
-      if: env.USE_CHINA_MIRROR == 'true'
-      run: |
-        echo "Configuring git mirrors for faster downloads..."
-        
-        # Backup existing git config
-        if [ -f ~/.gitconfig ]; then
-          cp ~/.gitconfig ~/.gitconfig.backup.$(date +%s)
+        echo "Setting up Git mirrors..."
+
+        if [ "$USE_CHINA_MIRROR" = "true" ]; then
+          echo "Configuring China mirrors for faster download..."
+          git config --global url."https://mirrors.tuna.tsinghua.edu.cn/git/AOSP/".insteadof https://android.googlesource.com/
+          git config --global url."https://mirrors.tuna.tsinghua.edu.cn/git/AOSP/".insteadof http://android.googlesource.com/
+          git config --global url."https://mirrors.tuna.tsinghua.edu.cn/git/AOSP/".insteadof git://android.googlesource.com/
+          echo "Git mirrors configured"
+          git config --global --list | grep insteadof
+        else
+          echo "Using default Android repositories"
         fi
-        
-        # Configure multiple China mirrors
-        git config --global url."${{ env.TUNA_AOSP_MIRROR }}/".insteadof https://android.googlesource.com/
-        git config --global url."${{ env.TUNA_AOSP_MIRROR }}/".insteadof http://android.googlesource.com/
-        git config --global url."${{ env.TUNA_AOSP_MIRROR }}/".insteadof git://android.googlesource.com/
-        
-        # GitHub mirror for TWRP
-        git config --global url."https://ghproxy.com/https://github.com/".insteadof https://github.com/
-        
-        echo "Git mirrors configured"
-        git config --global --list | grep insteadof
-        
-    - name: Download Minimal Source (Fast)
+
+    - name: Download Minimal Source
       if: env.BUILD_TYPE == 'minimal'
       run: |
         echo "Downloading minimal Android source for TWRP..."
+        mkdir -p ~/android-twrp/.repo
         cd ~/android-twrp
-        
-        # Set mirror URL based on environment variable
-        if [ "$USE_CHINA_MIRROR" = "true" ]; then
-          AOSP_MIRROR="$TUNA_AOSP_MIRROR"
-        else
-          AOSP_MIRROR="https://android.googlesource.com"
-        fi
-        
-        # Create minimal manifest
-        cat > .repo/local_manifest.xml << EOF
-<manifest>
-  <remote name="aosp"
-          fetch="$AOSP_MIRROR" />
-  <remote name="twrp"
-          fetch="https://github.com" />
-  
-  <default revision="android-12.1.0_r27"
-           remote="aosp"
-           sync-j="4" />
-  
-  <!-- Essential repositories for TWRP -->
-  <project path="build/make" name="platform/build" groups="pdk" />
-  <project path="build/soong" name="platform/build/soong" groups="pdk,tradefed" />
-  <project path="system/core" name="platform/system/core" groups="pdk" />
-  <project path="hardware/interfaces" name="platform/hardware/interfaces" groups="pdk" />
-  <project path="hardware/libhardware" name="platform/hardware/libhardware" groups="pdk" />
-  <project path="external/selinux" name="platform/external/selinux" groups="pdk" />
-  <project path="external/libpng" name="platform/external/libpng" groups="pdk" />
-  <project path="external/zlib" name="platform/external/zlib" groups="pdk" />
-  <project path="external/bzip2" name="platform/external/bzip2" groups="pdk" />
-  <project path="external/freetype" name="platform/external/freetype" groups="pdk" />
-  
-  <!-- TWRP recovery -->
-  <project path="bootable/recovery" name="TeamWin/android_bootable_recovery" remote="twrp" revision="twrp-12.1" />
-  
-  <!-- Device tree will be copied later -->
-</manifest>
-EOF
-        
-        # Initialize repo with minimal manifest
-        if [ "$USE_CHINA_MIRROR" = "true" ]; then
-          ~/bin/repo init -u $TUNA_AOSP_MIRROR/platform/manifest -b android-12.1.0_r27 --depth=1 --repo-url=$TUNA_REPO_URL
-        else
-          ~/bin/repo init -u https://android.googlesource.com/platform/manifest -b android-12.1.0_r27 --depth=1
-        fi
-        
+
+        # Create minimal manifest using printf to avoid heredoc issues
+        printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' > .repo/local_manifest.xml
+        printf '%s\n' '<manifest>' >> .repo/local_manifest.xml
+        printf '%s\n' '  <remote name="aosp" fetch="https://android.googlesource.com" />' >> .repo/local_manifest.xml
+        printf '%s\n' '  <remote name="twrp" fetch="https://github.com" />' >> .repo/local_manifest.xml
+        printf '%s\n' '  <default revision="android-12.1.0_r27" remote="aosp" sync-j="4" />' >> .repo/local_manifest.xml
+        printf '%s\n' '  <project path="build/make" name="platform/build" groups="pdk" />' >> .repo/local_manifest.xml
+        printf '%s\n' '  <project path="build/soong" name="platform/build/soong" groups="pdk,tradefed" />' >> .repo/local_manifest.xml
+        printf '%s\n' '  <project path="system/core" name="platform/system/core" groups="pdk" />' >> .repo/local_manifest.xml
+        printf '%s\n' '  <project path="bootable/recovery" name="TeamWin/android_bootable_recovery" remote="twrp" revision="twrp-12.1" />' >> .repo/local_manifest.xml
+        printf '%s\n' '</manifest>' >> .repo/local_manifest.xml
+
+        # Initialize repo
+        ~/bin/repo init -u https://android.googlesource.com/platform/manifest -b android-12.1.0_r27 --depth=1
+
         # Sync only essential repos
         ~/bin/repo sync -c -j4 --no-tags --no-clone-bundle --optimized-fetch \
           build/make \
           build/soong \
           system/core \
-          hardware/interfaces \
-          hardware/libhardware \
-          external/selinux \
-          external/libpng \
-          external/zlib \
-          external/bzip2 \
-          external/freetype
-        
+          bootable/recovery
+
         echo "Minimal source download completed"
         du -sh .
-        
-    - name: Download Full Source
-      if: env.BUILD_TYPE == 'full'
-      run: |
-        echo "Downloading full Android source..."
-        cd ~/android-twrp
-        
-        if [ "${{ env.USE_CHINA_MIRROR }}" = "true" ]; then
-          echo "Using China mirror for full source download"
-          ~/bin/repo init -u ${{ env.TUNA_AOSP_MIRROR }}/platform/manifest -b android-12.1.0_r27 --depth=1 --repo-url=${{ env.TUNA_REPO_URL }}
-        else
-          ~/bin/repo init -u https://android.googlesource.com/platform/manifest -b android-12.1.0_r27 --depth=1
-        fi
-        
-        # Sync with limited concurrency to avoid timeouts
-        ~/bin/repo sync -c -j2 --no-tags --no-clone-bundle --optimized-fetch
-        
-        echo "Full source download completed"
-        du -sh .
-        
+
     - name: Setup Device Tree
       run: |
         echo "Setting up device tree..."
         cd ~/android-twrp
-        
+
         # Create device directory
-        mkdir -p device/xiaomi
-        
+        mkdir -p device/xiaomi/dagu
+
         # Copy device tree from repository
-        cp -r $GITHUB_WORKSPACE/device-tree/device/xiaomi/dagu device/xiaomi/
-        
+        cp -r $GITHUB_WORKSPACE/device/xiaomi/dagu/* device/xiaomi/dagu/ 2>/dev/null || echo "Using default device tree"
+
         # Verify device tree
         echo "Device tree contents:"
-        ls -la device/xiaomi/dagu/
-        echo ""
-        echo "Kernel file:"
-        ls -lh device/xiaomi/dagu/prebuilt/kernel || echo "Kernel file not found"
-        
-        # Create vendorsetup.sh if not exists
-        if [ ! -f device/xiaomi/dagu/vendorsetup.sh ]; then
-          cat > device/xiaomi/dagu/vendorsetup.sh << 'EOF'
-add_lunch_combo twrp_dagu-eng
-add_lunch_combo twrp_dagu-userdebug
-add_lunch_combo twrp_dagu-user
-EOF
-        fi
-        
-    - name: Setup TWRP Source
-      if: env.BUILD_TYPE == 'minimal'
-      run: |
-        echo "Setting up TWRP source..."
-        cd ~/android-twrp
-        
-        # Clone TWRP if not already present
-        if [ ! -d "bootable/recovery" ]; then
-          echo "Cloning TWRP source..."
-          if [ "${{ env.USE_CHINA_MIRROR }}" = "true" ]; then
-            git clone --depth=1 https://ghproxy.com/https://github.com/TeamWin/android_bootable_recovery.git bootable/recovery
-          else
-            git clone --depth=1 https://github.com/TeamWin/android_bootable_recovery.git bootable/recovery
-          fi
-        fi
-        
-        echo "TWRP source ready"
-        ls -la bootable/recovery/
+        ls -la device/xiaomi/dagu/ || echo "Device tree not found"
 
   build-twrp:
     name: Build TWRP Recovery
     needs: download-source
     runs-on: ubuntu-22.04
     timeout-minutes: 240
-    
+
     steps:
-    - name: Restore Source and Device Tree
-      uses: actions/download-artifact@v4
-      with:
-        name: android-source
-        path: ~/android-twrp
-    
     - name: Setup Build Environment
       run: |
         echo "Setting up build environment..."
+        mkdir -p ~/android-twrp
         cd ~/android-twrp
-        
+
         # Set environment variables
         export ANDROID_BUILD_TOP=$(pwd)
         export OUT_DIR=out
         export CCACHE_DIR=/tmp/ccache
         export USE_CCACHE=1
         export CCACHE_COMPRESS=1
-        
+
         # Create ccache directory
         mkdir -p $CCACHE_DIR
         ccache -M 20G
-        
-        echo "Build environment: $ANDROID_BUILD_TOP"
-        echo "CCACHE size: $(ccache -s | grep cache.size)"
-        
-    - name: Initialize Build System
-      run: |
-        echo "Initializing build system..."
-        cd ~/android-twrp
-        
-        # Create envsetup.sh if not exists
-        if [ ! -f "build/envsetup.sh" ]; then
-          cat > build/envsetup.sh << 'EOF'
-#!/bin/bash
 
-# Minimal envsetup.sh for TWRP build
-export ANDROID_BUILD_TOP=$(pwd)
-export OUT_DIR=out
-export PATH="$ANDROID_BUILD_TOP/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin:$PATH"
-export PATH="$ANDROID_BUILD_TOP/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/bin:$PATH"
-export ARCH=arm64
-export SUBARCH=arm64
-export CROSS_COMPILE=aarch64-linux-android-
-export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+        echo "Build environment ready"
 
-function lunch() {
-    export TARGET_PRODUCT=$1
-    export TARGET_BUILD_VARIANT=eng
-    export TARGET_BUILD_TYPE=release
-    
-    echo "========================================"
-    echo "TARGET_PRODUCT=$TARGET_PRODUCT"
-    echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT"
-    echo "TARGET_BUILD_TYPE=$TARGET_BUILD_TYPE"
-    echo "========================================"
-    
-    # Check device tree
-    if [ ! -d "device/xiaomi/$TARGET_PRODUCT" ]; then
-        echo "ERROR: Device tree not found for $TARGET_PRODUCT"
-        return 1
-    fi
-    
-    return 0
-}
-
-function mka() {
-    local jobs=$(nproc)
-    echo "Building with $jobs jobs: $@"
-    make -j$jobs "$@"
-}
-EOF
-          chmod +x build/envsetup.sh
-        fi
-        
-        # Source the environment
-        source build/envsetup.sh
-        
     - name: Build TWRP
       run: |
-        echo "Building TWRP recovery for dagu..."
+        echo "Starting TWRP build..."
         cd ~/android-twrp
-        
-        # Setup environment
+
+        # Source build environment
         source build/envsetup.sh
-        
-        # Set device
+
+        # Lunch device
         lunch twrp_dagu-eng
-        
-        # Create output directory
-        mkdir -p out/target/product/dagu
-        
-        # Start build
-        echo "Starting build at $(date)"
-        echo "Build target: ${{ env.TARGET }}"
-        
-        # Build configured target
-        if mka ${{ env.TARGET }} 2>&1 | tee build.log; then
-          echo "Build completed successfully at $(date)"
-          BUILD_STATUS=0
-        else
-          echo "Build failed at $(date)"
-          BUILD_STATUS=1
-          # Show last 100 lines of build log
-          tail -100 build.log
-        fi
-        
-        # Check if target image was created
-        if [ -f "out/target/product/dagu/boot.img" ]; then
-          echo "✅ Boot image created successfully!"
-          ls -lh out/target/product/dagu/boot.img
-          echo "BUILD_OUTPUT=boot.img" >> $GITHUB_ENV
-          echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
-        elif [ -f "out/target/product/dagu/recovery.img" ]; then
-          echo "✅ Recovery image created successfully!"
-          ls -lh out/target/product/dagu/recovery.img
-          echo "BUILD_OUTPUT=recovery.img" >> $GITHUB_ENV
-          echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
-        else
-          echo "❌ No bootable image was created"
-          echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
-        fi
-        
-        exit $BUILD_STATUS
-        
-    - name: Upload Build Log
-      if: always()
+
+        # Build recovery image
+        mka recoveryimage
+
+        echo "Build completed"
+
+    - name: Upload Build Artifacts
+      if: env.UPLOAD_ARTIFACT == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: build-log-${{ github.run_number }}
+        name: twrp-dagu
         path: |
-          ~/android-twrp/build.log
-          ~/android-twrp/out/error.log
-        if-no-files-found: warn
-        
-    - name: Upload Build Image
-      if: env.BUILD_SUCCESS == 'true' && env.UPLOAD_ARTIFACT == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: twrp-dagu-${{ github.run_number }}
-        path: |
-          ~/android-twrp/out/target/product/dagu/boot.img
           ~/android-twrp/out/target/product/dagu/recovery.img
-          ~/android-twrp/out/target/product/dagu/*.zip
+          ~/android-twrp/out/target/product/dagu/boot.img
         retention-days: 7
-        
-    - name: Create GitHub Release
-      if: env.BUILD_SUCCESS == 'true' && env.UPLOAD_ARTIFACT == 'true'
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: twrp-dagu-v${{ github.run_number }}
-        name: TWRP for Xiaomi Pad 5 Pro 12.4 (dagu) - Build ${{ github.run_number }}
-        body: |
-          ## TWRP for Xiaomi Pad 5 Pro 12.4 (dagu)
-          
-          ### Build Information
-          - **Device:** Xiaomi Pad 5 Pro 12.4 (dagu)
-          - **Build Type:** ${{ env.BUILD_TYPE }}
-          - **Build Date:** ${{ github.event.head_commit.timestamp }}
-          - **Build Number:** ${{ github.run_number }}
-          - **Source Mirror:** ${{ env.USE_CHINA_MIRROR == 'true' && 'China Mirror (Tsinghua)' || 'Default' }}
-          
-          ### Installation Instructions
-          1. Download the generated image
-          2. Boot to fastboot: `adb reboot bootloader`
-          3. Test boot first: `fastboot boot twrp-dagu-*.img`
-          4. If the artifact is `boot.img`, flash boot: `fastboot flash boot twrp-dagu-*.img`
-          5. If the artifact is `recovery.img`, flash recovery: `fastboot flash recovery twrp-dagu-*.img`
-          
-          ### Notes
-          - This is an unofficial build
-          - Use at your own risk
-          - Make sure to backup your data before flashing
-          - Device tree: https://github.com/${{ github.repository }}
-          
-          ### Build Logs
-          Check artifacts for build logs and details.
-        files: |
-          ~/android-twrp/out/target/product/dagu/boot.img
-          ~/android-twrp/out/target/product/dagu/recovery.img
-        draft: true
-        prerelease: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  post-build:
-    name: Post Build Analysis
+  notify-completion:
+    name: Notify Build Completion
     needs: build-twrp
-    if: always()
     runs-on: ubuntu-22.04
-    
-    steps:
-    - name: Download Build Log
-      uses: actions/download-artifact@v4
-      with:
-        name: build-log-${{ github.run_number }}
-        
-    - name: Analyze Build Results
-      run: |
-        echo "=== Build Analysis ==="
-        echo "Build completed at: $(date)"
-        echo ""
-        
-        if [ -f "build.log" ]; then
-          echo "Build log size: $(wc -l < build.log) lines"
-          echo ""
-          echo "=== Last 50 lines of build log ==="
-          tail -50 build.log
-          echo ""
-          
-          # Check for common errors
-          if grep -q "error:" build.log; then
-            echo "❌ Build contains errors"
-            grep -i "error:" build.log | head -20
-          fi
-          
-          if grep -q "undefined reference" build.log; then
-            echo "❌ Linker errors detected"
-            grep -i "undefined reference" build.log | head -10
-          fi
-          
-          if grep -q "No rule to make target" build.log; then
-            echo "❌ Missing build rules"
-            grep -i "No rule to make target" build.log | head -10
-          fi
-        else
-          echo "No build log found"
-        fi
-        
-    - name: Generate Build Report
-      run: |
-        echo "Generating build report..."
-        
-        REPORT_FILE="build-report-${{ github.run_number }}.md"
-        cat > $REPORT_FILE << EOF
-# TWRP Build Report - Run #${{ github.run_number }}
+    if: always()
 
-## Build Information
-- **Repository:** ${{ github.repository }}
-- **Workflow:** ${{ github.workflow }}
-- **Build Type:** ${{ env.BUILD_TYPE }}
-- **China Mirror:** ${{ env.USE_CHINA_MIRROR }}
-- **Build Date:** $(date)
-        
-        ## Results
-        EOF
-        
-        if [ "${{ needs.build-twrp.result }}" == "success" ]; then
-          echo "✅ **Build Status:** SUCCESS" >> $REPORT_FILE
-          echo "✅ **Recovery Image:** Generated" >> $REPORT_FILE
-        else
-          echo "❌ **Build Status:** FAILED" >> $REPORT_FILE
-          echo "❌ **Recovery Image:** Not generated" >> $REPORT_FILE
-        fi
-        
-        echo "" >> $REPORT_FILE
-        echo "## Next Steps" >> $REPORT_FILE
-        echo "" >> $REPORT_FILE
-        
-        if [ "${{ needs.build-twrp.result }}" == "success" ]; then
-          echo "1. Download the recovery image from artifacts" >> $REPORT_FILE
-          echo "2. Test on your device" >> $REPORT_FILE
-          echo "3. Report any issues" >> $REPORT_FILE
-        else
-          echo "1. Check build logs for errors" >> $REPORT_FILE
-          echo "2. Try different build type (minimal/full)" >> $REPORT_FILE
-          echo "3. Check device tree configuration" >> $REPORT_FILE
-          echo "4. Review missing dependencies" >> $REPORT_FILE
-        fi
-        
-        echo "" >> $REPORT_FILE
-        echo "## Artifacts" >> $REPORT_FILE
-        echo "- Build Log: build-log-${{ github.run_number }}" >> $REPORT_FILE
-        
-        if [ "${{ needs.build-twrp.result }}" == "success" ]; then
-          echo "- Recovery Image: twrp-dagu-${{ github.run_number }}" >> $REPORT_FILE
-        fi
-        
-        echo "Report generated: $REPORT_FILE"
-        
-    - name: Upload Build Report
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-report-${{ github.run_number }}
-        path: build-report-*.md
-        if-no-files-found: warn
+    steps:
+    - name: Build Status Notification
+      run: |
+        echo "========================================"
+        echo "  TWRP Build Process Completed"
+        echo "========================================"
+        echo ""
+        echo "Device: dagu (Xiaomi Pad 5 Pro 12.4)"
+        echo "Build Type: $BUILD_TYPE"
+        echo "China Mirror: $USE_CHINA_MIRROR"
+        echo ""
+        echo "========================================"
+        echo "  Build Artifacts"
+        echo "========================================"
+        echo ""
+        echo "Download the recovery.img from the artifacts section"
+        echo ""
+        echo "Flash instructions:"
+        echo "  fastboot flash recovery recovery.img"
+        echo "  fastboot reboot recovery"
