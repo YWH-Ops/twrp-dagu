@@ -179,25 +179,25 @@ int main() {
 EOF
         
         # Create test makefile
-        cat > Makefile << 'EOF'
+        cat > Makefile << 'MAKEFILEEOF'
 .PHONY: all clean
 
 all: test_build
 
 test_build:
 	@echo "Testing build environment..."
-	@echo "CC: $(CC)"
-	@echo "CFLAGS: $(CFLAGS)"
-	@echo "ARCH: $(ARCH)"
+	@echo "CC: $$(CC)"
+	@echo "CFLAGS: $$(CFLAGS)"
+	@echo "ARCH: $$(ARCH)"
 	@echo ""
 	@echo "Building test program..."
-	$(CC) $(CFLAGS) -o test_program test.c
+	$$(CC) $$(CFLAGS) -o test_program test.c
 	@echo "Build completed"
 	@./test_program
 
 clean:
 	rm -f test_program
-EOF
+MAKEFILEEOF
         
         # Test compilation
         echo "Testing C compiler..."
