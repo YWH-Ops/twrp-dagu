@@ -154,16 +154,16 @@ jobs:
         
         # Create test Android.mk
         cat > Android.mk << 'EOF'
-LOCAL_PATH := $(call my-dir)
+LOCAL_PATH := MY_DIR
 
-include $(CLEAR_VARS)
+include CLEAR_VARS
 
 LOCAL_MODULE := test_twrp_build
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_MODULE_TAGS := optional
 LOCAL_SRC_FILES := test.c
 
-include $(BUILD_EXECUTABLE)
+include BUILD_EXECUTABLE
 EOF
         
         # Create test C file
